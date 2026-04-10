@@ -1,0 +1,13 @@
+---
+title: "Lab6"
+author: "Daniela Ramírez, Adrián González y José Ordoñez"
+date: "2026-04-10"
+output: html_document
+---
+
+Link de Github: https://github.com/Ikeel04/Lab6-MD.git 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
