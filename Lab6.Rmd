@@ -11,3 +11,150 @@ Link de Github: https://github.com/Ikeel04/Lab6-MD.git
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r librerias}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(class)
+library(GGally)
+```
+
+```{r carga de datos}
+load("listings.RData")
+
+dim(listings)
+str(listings)
+```
+
+
+## Preparación del conjunto de datos
+
+```{r preparacion}
+listings$price <- as.numeric(gsub("[$,]", "", listings$price))
+listings <- listings %>%
+  filter(!is.na(price), price > 0)
+
+p33 <- quantile(listings$price, 0.33, na.rm = TRUE)
+p66 <- quantile(listings$price, 0.66, na.rm = TRUE)
+
+listings$precio_categoria <- cut(
+  listings$price,
+  breaks = c(-Inf, p33, p66, Inf),
+  labels = c("barata", "media", "cara")
+)
+
+vars_numericas <- c(
+  "price",
+  "accommodates",
+  "bathrooms",
+  "bedrooms",
+  "beds",
+  "minimum_nights",
+  "number_of_reviews",
+  "review_scores_rating",
+  "reviews_per_month",
+  "calculated_host_listings_count",
+  "availability_365"
+)
+
+vars_disponibles <- intersect(vars_numericas, names(listings))
+datos <- listings[, c(vars_disponibles, "precio_categoria")]
+
+# Imputamos NAs con la mediana en columnas numéricas
+for (col in vars_disponibles) {
+  datos[[col]][is.na(datos[[col]])] <- median(datos[[col]], na.rm = TRUE)
+}
+
+```
+
+```{r particion}
+set.seed(123)
+porciento <- 0.70
+corte     <- sample(nrow(datos), size = floor(porciento * nrow(datos)))
+
+train <- datos[corte, ]
+test  <- datos[-corte, ]
+```
+
+
+## Modelo de regresión KNN para predicción de precio
+
+```{r knn regresion modelo1}
+k_inicial <- round(sqrt(nrow(train)), 0)
+cat("Valor inicial de k:", k_inicial, "\n")
+
+parametros_k <- expand.grid(k = k_inicial)
+
+set.seed(123)
+modelo_knn_reg <- train(
+  price ~ . - precio_categoria,     
+  data       = train,
+  method     = "knn",
+  preProcess = c("center", "scale"),
+  tuneGrid   = parametros_k
+)
+
+pred_knn_reg <- predict(modelo_knn_reg, newdata = test)
+
+rmse_knn  <- RMSE(pred_knn_reg, test$price)
+mae_knn   <- MAE(pred_knn_reg, test$price)
+r2_knn    <- cor(pred_knn_reg, test$price)^2
+
+cat("\n── Resultados del modelo KNN de regresión (k =", k_inicial, ") ──\n")
+cat("RMSE:", round(rmse_knn, 4), "\n")
+cat("MAE :", round(mae_knn,  4), "\n")
+cat("R²  :", round(r2_knn,   4), "\n")
+```
+
+
+## 2. Análisis de resultados del modelo de regresión KNN
+
+Visualizamos las predicciones contra los valores reales para identificar visualmente el comportamiento del modelo.
+
+```{r knn-reg-visualizacion}
+df_reg <- data.frame(
+  Indice   = 1:length(test$price),
+  Real     = test$price,
+  Predicho = pred_knn_reg
+)
+
+ggplot(df_reg) +
+  geom_point(aes(x = Indice, y = Real,     color = "Real"),     alpha = 0.5, size = 1.5) +
+  geom_point(aes(x = Indice, y = Predicho, color = "Predicho"), alpha = 0.5, size = 1.5) +
+  scale_color_manual(values = c("Real" = "#e74c3c", "Predicho" = "#2980b9")) +
+  labs(
+    title = "KNN Regresión – Valores Reales vs. Predichos (Precio)",
+    x     = "Observación",
+    y     = "Precio (USD)",
+    color = ""
+  ) +
+  theme_minimal()
+```
+
+```{r residuos-knn-reg}
+df_reg$Residuo <- df_reg$Real - df_reg$Predicho
+
+ggplot(df_reg, aes(x = Real, y = Residuo)) +
+  geom_point(color = "#e67e22", alpha = 0.5, size = 1.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "steelblue") +
+  labs(
+    title = "Residuos del modelo KNN de regresión",
+    x     = "Precio Real",
+    y     = "Residuo (Real − Predicho)"
+  ) +
+  theme_minimal()
+```
+
+El modelo KNN de regresión fue entrenado con k = 231 vecinos, valor derivado de la raíz cuadrada del número de observaciones de entrenamiento.
+
+RMSE = 3,742.26: Para propiedades de Airbnb, este margen puede ser significativo en rangos de precio bajo o medio, pero representar un error relativo menor en propiedades de lujo.
+MAE = 685.01: La mediana del error absoluto es mucho menor que el RMSE, lo que indica que la mayoría de las predicciones están relativamente cerca del precio real, pero existen errores extremos que inflan el RMSE considerablemente.
+R² = 0.3391: Esto sugiere un ajuste moderado-bajo, indicando que las variables utilizadas no capturan completamente los factores que determinan el precio de una propiedad.
+
+La gráfica muestra que el modelo tiende a predecir precios dentro del rango de 0–15,000, sin importar que el valor real sea mucho mayor. Los valores reales extremos (40,000–50,000) quedan muy por encima de las predicciones, lo que evidencia que KNN con k grande suaviza en exceso las predicciones al promediar demasiados vecinos, perdiendo sensibilidad ante propiedades de alta gama.
+
+Los residuos crecen de forma casi lineal conforme aumenta el precio real, con errores positivos muy elevados 
+en las propiedades más costosas (40,000–50,000). En el rango de precios bajos la distribución de residuos es más simétrica alrededor de cero, lo que indica que el modelo funciona aceptablemente para propiedades de precio típico, que son justamente las que más interesan a SmartStay para sus recomendaciones cotidianas. Sin embargo, para propiedades premium el modelo claramente se subestima el precio, lo que podría llevar 
+a recomendaciones de precio no competitivas en ese segmento.
+
