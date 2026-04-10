@@ -234,3 +234,55 @@ cm_k5 <- confusionMatrix(pred_knn_cls, test_labels)
 print(cm_k5)
 ```
 Se entrenó un modelo KNN de clasificación con k=5 para predecir la categoría de precio de cada propiedad. El algoritmo clasifica cada observación del conjunto de prueba según la categoría más frecuente entre sus 5 vecinos más cercanos en el espacio normalizado de variables.
+
+```{r}
+## ── Inciso 5: Eficiencia del modelo de regresión KNN ──────────────────────────
+
+# Las predicciones ya se hicieron con pred_knn_reg sobre test
+# Solo consolidamos y mostramos las métricas
+
+cat("=== Eficiencia del Modelo KNN de REGRESIÓN ===\n")
+cat("Conjunto de prueba: ", nrow(test), "observaciones\n\n")
+
+rmse_knn <- RMSE(pred_knn_reg, test$price)
+mae_knn  <- MAE(pred_knn_reg,  test$price)
+r2_knn   <- cor(pred_knn_reg,  test$price)^2
+mape_knn <- mean(abs((test$price - pred_knn_reg) / test$price) * 100, na.rm = TRUE)
+
+cat("RMSE :", round(rmse_knn, 4), "\n")
+cat("MAE  :", round(mae_knn,  4), "\n")
+cat("R²   :", round(r2_knn,   4), "\n")
+cat("MAPE :", round(mape_knn, 4), "%\n")
+
+
+## ── Inciso 5: Eficiencia del modelo KNN de CLASIFICACIÓN ──────────────────────
+
+# Las predicciones ya se hicieron con pred_knn_cls sobre test_scaled
+cat("\n=== Eficiencia del Modelo KNN de CLASIFICACIÓN (k=5) ===\n")
+cat("Conjunto de prueba:", length(test_labels), "observaciones\n\n")
+
+cm_k5 <- confusionMatrix(pred_knn_cls, test_labels)
+print(cm_k5)
+
+# Métricas por clase extraídas de la matriz de confusión
+cat("\n── Métricas por categoría ──\n")
+precision_por_clase <- cm_k5$byClass[, "Precision"]
+recall_por_clase    <- cm_k5$byClass[, "Recall"]
+f1_por_clase        <- cm_k5$byClass[, "F1"]
+
+metricas_clase <- data.frame(
+  Clase     = c("Economica", "Intermedia", "Cara"),
+  Precision = round(precision_por_clase, 4),
+  Recall    = round(recall_por_clase,    4),
+  F1        = round(f1_por_clase,        4)
+)
+print(metricas_clase)
+
+cat("\n── Métricas globales ──\n")
+cat("Accuracy  :", round(cm_k5$overall["Accuracy"],  4), "\n")
+cat("Kappa     :", round(cm_k5$overall["Kappa"],     4), "\n")
+```
+
+El modelo de regresión obtuvo un R² de 0.3391, RMSE de 3,742 y un MAPE de 173%, lo que indica un ajuste moderado-bajo. El error es manejable en propiedades de precio típico (MAE = 685), pero se dispara en propiedades de alto valor, donde el modelo suaviza excesivamente las predicciones al promediar demasiados vecinos.
+
+El modelo de clasificación alcanzó una exactitud del 65.41% y un Kappa de 0.4359, reflejando un acuerdo moderado. Tiene mejor desempeño en la clase intermedia (F1 = 0.6846), que es también la más frecuente, mientras que las clases extremas presentan métricas más bajas. El error más común ocurre en la frontera entre propiedades económicas e intermedias, lo que sugiere que las variables disponibles no capturan bien ese límite de precio.
