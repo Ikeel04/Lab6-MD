@@ -158,3 +158,79 @@ Los residuos crecen de forma casi lineal conforme aumenta el precio real, con er
 en las propiedades más costosas (40,000–50,000). En el rango de precios bajos la distribución de residuos es más simétrica alrededor de cero, lo que indica que el modelo funciona aceptablemente para propiedades de precio típico, que son justamente las que más interesan a SmartStay para sus recomendaciones cotidianas. Sin embargo, para propiedades premium el modelo claramente se subestima el precio, lo que podría llevar 
 a recomendaciones de precio no competitivas en ese segmento.
 
+## 4. Modelo de clasificación KNN
+
+```{r variable-categorica}
+listings_clean <- listings %>%
+  select(
+    price, accommodates, bathrooms, bedrooms, beds,
+    minimum_nights, availability_365, number_of_reviews,
+    review_scores_rating, reviews_per_month,
+    room_type, property_type, instant_bookable
+  ) %>%
+  mutate(
+    bathrooms = ifelse(is.na(bathrooms), median(bathrooms, na.rm = TRUE), bathrooms),
+    bedrooms = ifelse(is.na(bedrooms), median(bedrooms, na.rm = TRUE), bedrooms),
+    beds = ifelse(is.na(beds), median(beds, na.rm = TRUE), beds),
+    review_scores_rating = ifelse(is.na(review_scores_rating), mean(review_scores_rating, na.rm = TRUE),   review_scores_rating),
+    reviews_per_month = ifelse(is.na(reviews_per_month), 0, reviews_per_month)
+  ) %>%
+  filter(price < quantile(price, 0.99)) %>%
+  mutate(
+    room_type = as.factor(room_type),
+    property_type = as.factor(property_type),
+    instant_bookable = as.factor(instant_bookable)
+  )
+
+listings_clean$price_category <- cut(
+  listings_clean$price,
+  breaks = c(-Inf, 120, 326, Inf),
+  labels = c("Economica", "Intermedia", "Cara")
+)
+
+table(listings_clean$price_category)
+```
+
+```{r train-test-cls}
+features_cls <- listings_clean %>%
+  select(accommodates, bathrooms, bedrooms, beds,
+         minimum_nights, availability_365, number_of_reviews,
+         review_scores_rating, reviews_per_month,
+         room_type, instant_bookable, price_category)
+
+set.seed(123)
+trainIndex_cls <- createDataPartition(features_cls$price_category, p = 0.7, list = FALSE)
+train_cls <- features_cls[trainIndex_cls, ]
+test_cls  <- features_cls[-trainIndex_cls, ]
+```
+Se seleccionaron las variables predictoras relevantes excluyendo price para evitar data leakage. Con una partición 70/30, se dividió el dataset en entrenamiento y prueba, que garantiza una distribución proporcional de las tres categorías en ambos conjuntos.
+
+```{r preprocesamiento-cls}
+train_labels <- train_cls$price_category
+test_labels  <- test_cls$price_category
+
+train_features <- train_cls %>% select(-price_category)
+test_features  <- test_cls  %>% select(-price_category)
+
+train_dummy <- model.matrix(~ . - 1, data = train_features)
+test_dummy  <- model.matrix(~ . - 1, data = test_features)
+
+pre_proc     <- preProcess(train_dummy, method = c("center", "scale"))
+train_scaled <- predict(pre_proc, train_dummy)
+test_scaled  <- predict(pre_proc, test_dummy)
+```
+Antes de entrenar el modelo KNN, se realizó un preprocesamiento en dos pasos. Primero, se aplicó codificación one-hot a las variables categóricas room_type e instant_bookable, convirtiéndolas en columnas numéricas binarias. Segundo, se normalizaron todas las variables con z-score, usando los parámetros del conjunto de entrenamiento y aplicándolos también al de prueba. 
+
+```{r knn-clasificacion}
+set.seed(123)
+pred_knn_cls <- knn(
+  train = train_scaled,
+  test  = test_scaled,
+  cl    = train_labels,
+  k     = 5
+)
+
+cm_k5 <- confusionMatrix(pred_knn_cls, test_labels)
+print(cm_k5)
+```
+Se entrenó un modelo KNN de clasificación con k=5 para predecir la categoría de precio de cada propiedad. El algoritmo clasifica cada observación del conjunto de prueba según la categoría más frecuente entre sus 5 vecinos más cercanos en el espacio normalizado de variables.
