@@ -158,6 +158,26 @@ Los residuos crecen de forma casi lineal conforme aumenta el precio real, con er
 en las propiedades más costosas (40,000–50,000). En el rango de precios bajos la distribución de residuos es más simétrica alrededor de cero, lo que indica que el modelo funciona aceptablemente para propiedades de precio típico, que son justamente las que más interesan a SmartStay para sus recomendaciones cotidianas. Sin embargo, para propiedades premium el modelo claramente se subestima el precio, lo que podría llevar 
 a recomendaciones de precio no competitivas en ese segmento.
 
+## 3. Comparación de modelos de regresión
+
+```{r comparacion-regresion}
+comparacion_reg <- data.frame(
+  Modelo = c("Regresión Lineal", "Árbol de Regresión", "Naive Bayes", "KNN"),
+  RMSE   = c(3012.00, 1939.52, 1761.22, 3742.26)
+)
+
+print(comparacion_reg)
+
+ggplot(comparacion_reg, aes(x = reorder(Modelo, RMSE), y = RMSE, fill = Modelo)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  geom_text(aes(label = round(RMSE, 2)), vjust = -0.5) +
+  labs(title = "Comparación de RMSE entre modelos de regresión",
+       x = "Modelo", y = "RMSE") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+Al comparar los cuatro modelos de regresión mediante el RMSE, el Naive Bayes obtuvo el menor error con 1761.22, seguido por el Árbol de Regresión (1939.52), la Regresión Lineal (3012.00) y finalmente KNN (3742.26). Un RMSE menor indica que las predicciones del modelo se alejan menos del precio real, por lo que Naive Bayes resultó ser el modelo con mayor precisión para estimar precios en este conjunto de datos. El KNN, al promediar un gran número de vecinos, tiende a suavizar demasiado las predicciones, lo que le resta capacidad para capturar la variabilidad real de los precios.
+
 ## 4. Modelo de clasificación KNN
 
 ```{r variable-categorica}
