@@ -256,7 +256,7 @@ print(cm_k5)
 Se entrenó un modelo KNN de clasificación con k=5 para predecir la categoría de precio de cada propiedad. El algoritmo clasifica cada observación del conjunto de prueba según la categoría más frecuente entre sus 5 vecinos más cercanos en el espacio normalizado de variables.
 
 ```{r}
-## ── Inciso 5: Eficiencia del modelo de regresión KNN ──────────────────────────
+## Eficiencia del modelo de regresión KNN
 
 # Las predicciones ya se hicieron con pred_knn_reg sobre test
 # Solo consolidamos y mostramos las métricas
@@ -275,7 +275,7 @@ cat("R²   :", round(r2_knn,   4), "\n")
 cat("MAPE :", round(mape_knn, 4), "%\n")
 
 
-## ── Inciso 5: Eficiencia del modelo KNN de CLASIFICACIÓN ──────────────────────
+## Eficiencia del modelo KNN de CLASIFICACIÓN
 
 # Las predicciones ya se hicieron con pred_knn_cls sobre test_scaled
 cat("\n=== Eficiencia del Modelo KNN de CLASIFICACIÓN (k=5) ===\n")
@@ -359,3 +359,89 @@ cat("Accuracy en prueba       :", round(acc_test,  4), "\n")
 cat("Diferencia               :", round(acc_train - acc_test, 4), "\n")
 ```
 Al comparar el accuracy en entrenamiento (75.54%) contra el accuracy en prueba (65.44%), se observa una diferencia de 10.09 puntos porcentuales, lo que indica un nivel moderado de sobreajuste. El modelo aprendió patrones específicos del conjunto de entrenamiento que no generalizan perfectamente a datos nuevos.
+
+## 8. Modelos con validación cruzada
+
+Para mitigar el sobreajuste identificado, se entrena una versión del modelo de clasificación y otra de regresión usando validación cruzada repetida. El método divide el conjunto de entrenamiento en 10 partes, entrena el modelo en 9 y valida en la restante, rotando la parte de validación, y repite el proceso 3 veces para obtener una estimación más estable del error.
+
+### Clasificación con validación cruzada
+
+```{r vc clasificacion}
+set.seed(123)
+
+trctrl <- trainControl(
+  method  = "repeatedcv",
+  number  = 10,
+  repeats = 3
+)
+
+modelo_cv_cls <- train(
+  price_category ~ .,
+  data       = train_cls,
+  method     = "knn",
+  trControl  = trctrl,
+  preProcess = c("center", "scale"),
+  tuneGrid   = expand.grid(k = 5)   # mismo k que el modelo anterior
+)
+
+pred_cv_cls <- predict(modelo_cv_cls, newdata = test_cls)
+cm_cv_cls   <- confusionMatrix(pred_cv_cls, test_labels)
+print(cm_cv_cls)
+```
+
+```{r comparacion cls v vc}
+acc_sin_cv <- round(cm_k5$overall["Accuracy"],    4)
+kap_sin_cv <- round(cm_k5$overall["Kappa"],       4)
+acc_con_cv <- round(cm_cv_cls$overall["Accuracy"], 4)
+kap_con_cv <- round(cm_cv_cls$overall["Kappa"],    4)
+
+comparacion_cls <- data.frame(
+  Modelo   = c("KNN Clasificación (sin VC)", "KNN Clasificación (con VC)"),
+  Accuracy = c(acc_sin_cv, acc_con_cv),
+  Kappa    = c(kap_sin_cv, kap_con_cv)
+)
+
+knitr::kable(comparacion_cls,
+             caption = "Comparación KNN Clasificación: sin vs. con validación cruzada")
+```
+
+### Regresión con validación cruzada
+
+```{r vc regresion}
+set.seed(123)
+
+modelo_cv_reg <- train(
+  price ~ . - precio_categoria,
+  data       = train,
+  method     = "knn",
+  trControl  = trctrl,
+  preProcess = c("center", "scale"),
+  tuneGrid   = expand.grid(k = k_inicial)   # mismo k que el modelo base
+)
+
+pred_cv_reg <- predict(modelo_cv_reg, newdata = test)
+
+rmse_cv <- RMSE(pred_cv_reg, test$price)
+mae_cv  <- MAE(pred_cv_reg,  test$price)
+r2_cv   <- cor(pred_cv_reg,  test$price)^2
+
+comparacion_reg_cv <- data.frame(
+  Modelo = c("KNN Regresión (sin VC)", "KNN Regresión (con VC)"),
+  RMSE   = c(round(rmse_knn, 4), round(rmse_cv, 4)),
+  MAE    = c(round(mae_knn,  4), round(mae_cv,  4)),
+  R2     = c(round(r2_knn,   4), round(r2_cv,   4))
+)
+
+knitr::kable(comparacion_reg_cv,
+             caption = "Comparación KNN Regresión: sin vs. con validación cruzada")
+```
+
+La validación cruzada produjo una mejora marginal: el Accuracy pasó de 0.6541 a 0.6550 y el Kappa de 0.4359 a 0.4374. Analizando la matriz de confusión del modelo con VC, la clase con mejor detección sigue siendo Intermedia (Sensitivity = 0.7147), lo que se explica por ser la clase más frecuente. La clase Económica continúa siendo la más difícil de clasificar (Sensitivity = 0.5741): el modelo confunde muchas propiedades económicas con intermedias y otras con caras, errores costosos para SmartStay ya que podrían llevar a recomendar propiedades fuera del
+presupuesto del cliente. La clase Cara tiene la especificidad más alta (0.9035), lo que significa que el modelo raramente clasifica como cara una propiedad que no lo es, un comportamiento deseable para evitar decepciones en el segmento premium.
+
+La mejora tan pequeña con validación cruzada confirma lo señalado en el punto 7: el sobreajuste era moderado, no severo. El modelo ya generalizaba razonablemente bien con k=5.
+
+Con la regresión se puede ver que las métricas son idénticas en ambos modelos (RMSE = 3742.261, MAE = 685.0093, R² = 0.3391). Parece que no se construye un modelo paramétrico durante el entrenamiento, por lo que la validación cruzada influye únicamente en la estimación interna del error pero no modifica las predicciones
+finales sobre el conjunto de prueba cuando k es fijo.
+
+Aún así, el modelo con validación cruzada es preferible por ser metodológicamente más robusto en su proceso de entrenamiento, aunque las diferencias en métricas finales sean mínimas.
