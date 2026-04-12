@@ -306,3 +306,56 @@ cat("Kappa     :", round(cm_k5$overall["Kappa"],     4), "\n")
 El modelo de regresión obtuvo un R² de 0.3391, RMSE de 3,742 y un MAPE de 173%, lo que indica un ajuste moderado-bajo. El error es manejable en propiedades de precio típico (MAE = 685), pero se dispara en propiedades de alto valor, donde el modelo suaviza excesivamente las predicciones al promediar demasiados vecinos.
 
 El modelo de clasificación alcanzó una exactitud del 65.41% y un Kappa de 0.4359, reflejando un acuerdo moderado. Tiene mejor desempeño en la clase intermedia (F1 = 0.6846), que es también la más frecuente, mientras que las clases extremas presentan métricas más bajas. El error más común ocurre en la frontera entre propiedades económicas e intermedias, lo que sugiere que las variables disponibles no capturan bien ese límite de precio.
+
+## 6. Análisis de la matriz de confusión del modelo de clasificación KNN
+
+```{r matriz-confusion-visualizacion}
+cm_tabla <- as.data.frame(cm_k5$table)
+colnames(cm_tabla) <- c("Predicho", "Real", "Frecuencia")
+
+ggplot(cm_tabla, aes(x = Real, y = Predicho, fill = Frecuencia)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Frecuencia), size = 5, fontface = "bold") +
+  scale_fill_gradient(low = "#d6eaf8", high = "#1a5276") +
+  labs(
+    title = "Matriz de Confusión – KNN Clasificación (k=5)",
+    x = "Clase Real",
+    y = "Clase Predicha"
+  ) +
+  theme_minimal()
+```
+
+```{r analisis-confusion}
+metricas_clase <- data.frame(
+  Clase     = rownames(cm_k5$byClass),
+  Precision = round(cm_k5$byClass[, "Precision"], 4),
+  Recall    = round(cm_k5$byClass[, "Recall"],    4),
+  F1        = round(cm_k5$byClass[, "F1"],        4),
+  Specificity = round(cm_k5$byClass[, "Specificity"], 4)
+)
+print(metricas_clase)
+
+cat("\nAccuracy global:", round(cm_k5$overall["Accuracy"], 4), "\n")
+cat("Kappa          :", round(cm_k5$overall["Kappa"],    4), "\n")
+```
+La clase con mejor desempeño fue Intermedia (0.6848), beneficiada por ser la categoría más frecuente. La clase Económica presentó el recall más bajo (0.5745), lo que indica que es donde el modelo se equivoca más, confundiendo frecuentemente propiedades económicas con intermedias debido a la proximidad en sus rangos de precio. La clase Cara tuvo la especificidad más alta (0.9032), lo que significa que el modelo raramente clasifica una propiedad no cara como cara.
+Los errores más críticos son las confusiones entre Económica y Cara, ya que recomendar una propiedad fuera del presupuesto real del cliente tendría el mayor impacto negativo.
+
+## 7. Análisis de sobreajuste del modelo KNN
+
+```{r sobreajuste}
+pred_train_cls <- knn(
+  train = train_scaled,
+  test  = train_scaled,
+  cl    = train_labels,
+  k     = 10
+)
+
+acc_train <- mean(pred_train_cls == train_labels)
+acc_test  <- mean(pred_knn_cls   == test_labels)
+
+cat("Accuracy en entrenamiento:", round(acc_train, 4), "\n")
+cat("Accuracy en prueba       :", round(acc_test,  4), "\n")
+cat("Diferencia               :", round(acc_train - acc_test, 4), "\n")
+```
+Al comparar el accuracy en entrenamiento (75.54%) contra el accuracy en prueba (65.44%), se observa una diferencia de 10.09 puntos porcentuales, lo que indica un nivel moderado de sobreajuste. El modelo aprendió patrones específicos del conjunto de entrenamiento que no generalizan perfectamente a datos nuevos.
