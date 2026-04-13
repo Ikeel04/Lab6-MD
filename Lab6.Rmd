@@ -562,3 +562,26 @@ knitr::kable(comparacion_tune_reg,
 ```
 
 El parámetro k es el principal hiperparámetro tuneable en KNN y su elección tiene un impacto directo en el balance entre sesgo y varianza. Un k pequeño genera modelos con alta varianza (sobreajuste), mientras que un k grande introduce sesgo excesivo (subajuste). Para este conjunto de datos, el valor óptimo se encuentra en un punto intermedio que la validación cruzada permite identificar de forma sistemática. El tuneo mejoró ambos modelos respecto a sus versiones base, siendo la ganancia más notable en regresión, donde el k inicial de 231 era claramente subóptimo.
+
+# 10. Comparación de modelos de clasificación
+
+```{r}
+comparacion_cls <- data.frame(
+  Modelo     = c("Naive Bayes", "KNN (tuneado, k=31)", "Árbol de Decisión", "Random Forest"),
+  Accuracy   = c(0.5886, 0.6661, 0.6896, 0.8593),
+  Kappa      = c(0.3549, 0.4414, NA,     0.7714),
+  Tiempo_seg = c(0.055,  NA,     0.517,  0.523)
+)
+
+print(comparacion_cls)
+
+ggplot(comparacion_cls, aes(x = reorder(Modelo, Accuracy), y = Accuracy, fill = Modelo)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  geom_text(aes(label = round(Accuracy, 4)), vjust = -0.5) +
+  labs(title = "Comparación de Accuracy entre modelos de clasificación",
+       x = "Modelo", y = "Accuracy") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+Random Forest es el modelo con mejor desempeño para clasificar propiedades de Airbnb, alcanzando un Accuracy de 0.8593 y un Kappa de 0.7714, lo que indica un acuerdo sustancial con la realidad, muy por encima del resto de modelos. Le sigue el Árbol de Decisión (0.6896), luego el KNN tuneado con k=31 (0.6661, Kappa=0.4414) y finalmente Naive Bayes (0.5886, Kappa=0.3549), que apenas supera al azar. El Kappa del Árbol de Decisión no fue reportado en entregas anteriores, y el tiempo de procesamiento del KNN tampoco fue medido en su momento, por lo que ambos aparecen como NA en la tabla.
+En cuanto al tiempo de procesamiento, Naive Bayes fue el más rápido con apenas 0.055 segundos, lo que refleja su naturaleza de modelo probabilístico simple. El Árbol de Decisión tardó 0.517 segundos y el Random Forest 0.523 segundos — prácticamente lo mismo a pesar de ser un ensemble de 100 árboles, lo que lo convierte en la opción más atractiva: mejor precisión sin costo adicional en tiempo. Para SmartStay, Random Forest es la recomendación clara para clasificar propiedades en económica, intermedia y cara, ya que su alta precisión reduce el riesgo de recomendar una propiedad fuera del rango de precio esperado por el cliente.
