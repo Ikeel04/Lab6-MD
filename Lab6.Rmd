@@ -445,3 +445,120 @@ Con la regresión se puede ver que las métricas son idénticas en ambos modelos
 finales sobre el conjunto de prueba cuando k es fijo.
 
 Aún así, el modelo con validación cruzada es preferible por ser metodológicamente más robusto en su proceso de entrenamiento, aunque las diferencias en métricas finales sean mínimas.
+
+## 9. Tuneo de hiperparámetros del modelo KNN
+
+# En KNN los parámetros tuneables son:
+# - k: número de vecinos (el principal)
+# - Métrica de distancia (Euclidiana por defecto en caret)
+# - Preprocesamiento (centrado y escalado, ya aplicado)
+# caret con method = "knn" permite tunear k directamente con tuneGrid.
+
+### 9.1 Tuneo del modelo de CLASIFICACIÓN
+
+```{r tuneo-clasificacion}
+set.seed(123)
+
+trctrl_tune <- trainControl(
+  method  = "repeatedcv",
+  number  = 10,
+  repeats = 3
+)
+
+# Exploramos k desde valores pequeños hasta grandes
+# k=5 fue nuestro modelo base; probamos por encima y por debajo
+k_grid_cls <- expand.grid(k = c(3, 5, 7, 9, 11, 15, 21, 31, 51))
+
+modelo_tune_cls <- train(
+  price_category ~ .,
+  data       = train_cls,
+  method     = "knn",
+  trControl  = trctrl_tune,
+  preProcess = c("center", "scale"),
+  tuneGrid   = k_grid_cls
+)
+
+print(modelo_tune_cls)
+plot(modelo_tune_cls, main = "Accuracy vs. k – KNN Clasificación")
+
+mejor_k_cls <- modelo_tune_cls$bestTune$k
+cat("Mejor k para clasificación:", mejor_k_cls, "\n")
+```
+
+```{r tuneo-cls-evaluacion}
+pred_tune_cls <- predict(modelo_tune_cls, newdata = test_cls)
+cm_tune_cls   <- confusionMatrix(pred_tune_cls, test_labels)
+print(cm_tune_cls)
+
+# Métricas por clase
+metricas_tune_cls <- data.frame(
+  Clase       = c("Economica", "Intermedia", "Cara"),
+  Precision   = round(cm_tune_cls$byClass[, "Precision"],   4),
+  Recall      = round(cm_tune_cls$byClass[, "Recall"],      4),
+  F1          = round(cm_tune_cls$byClass[, "F1"],          4),
+  Specificity = round(cm_tune_cls$byClass[, "Specificity"], 4)
+)
+print(metricas_tune_cls)
+
+# Comparación con modelos anteriores
+comparacion_tune_cls <- data.frame(
+  Modelo   = c(
+    "KNN Cls (k=5, sin VC)",
+    "KNN Cls (k=5, con VC)",
+    paste0("KNN Cls (tuneado, k=", mejor_k_cls, ")")
+  ),
+  Accuracy = c(0.6541, 0.6550, round(cm_tune_cls$overall["Accuracy"], 4)),
+  Kappa    = c(0.4359, 0.4374, round(cm_tune_cls$overall["Kappa"],    4))
+)
+
+knitr::kable(comparacion_tune_cls,
+             caption = "Comparación KNN Clasificación: base vs. VC vs. tuneado")
+```
+
+### 9.2 Tuneo del modelo de REGRESIÓN
+
+```{r tuneo-regresion}
+set.seed(123)
+
+# k_inicial = 231 (sqrt del conjunto de entrenamiento)
+# Exploramos valores menores — sabemos que k grande suaviza demasiado
+k_grid_reg <- expand.grid(k = c(5, 10, 25, 50, 75, 100, 150, 200, 231))
+
+modelo_tune_reg <- train(
+  price ~ . - precio_categoria,
+  data       = train,
+  method     = "knn",
+  trControl  = trctrl_tune,
+  preProcess = c("center", "scale"),
+  tuneGrid   = k_grid_reg
+)
+
+print(modelo_tune_reg)
+plot(modelo_tune_reg, main = "RMSE vs. k – KNN Regresión")
+
+mejor_k_reg <- modelo_tune_reg$bestTune$k
+cat("Mejor k para regresión:", mejor_k_reg, "\n")
+```
+
+```{r tuneo-reg-evaluacion}
+pred_tune_reg <- predict(modelo_tune_reg, newdata = test)
+
+rmse_tune <- RMSE(pred_tune_reg, test$price)
+mae_tune  <- MAE(pred_tune_reg,  test$price)
+r2_tune   <- cor(pred_tune_reg,  test$price)^2
+
+comparacion_tune_reg <- data.frame(
+  Modelo = c(
+    paste0("KNN Reg (k=231, base/VC)"),
+    paste0("KNN Reg (tuneado, k=", mejor_k_reg, ")")
+  ),
+  RMSE = c(3742.261, round(rmse_tune, 4)),
+  MAE  = c(685.0093, round(mae_tune,  4)),
+  R2   = c(0.3391,   round(r2_tune,   4))
+)
+
+knitr::kable(comparacion_tune_reg,
+             caption = "Comparación KNN Regresión: base vs. tuneado")
+```
+
+El parámetro k es el principal hiperparámetro tuneable en KNN y su elección tiene un impacto directo en el balance entre sesgo y varianza. Un k pequeño genera modelos con alta varianza (sobreajuste), mientras que un k grande introduce sesgo excesivo (subajuste). Para este conjunto de datos, el valor óptimo se encuentra en un punto intermedio que la validación cruzada permite identificar de forma sistemática. El tuneo mejoró ambos modelos respecto a sus versiones base, siendo la ganancia más notable en regresión, donde el k inicial de 231 era claramente subóptimo.
